@@ -33,5 +33,5 @@ namespace shellcode {
         0xFF, 0x15, 0x00, 0x00, 0x00, 0x00
     };
 
-    int generate(int eax, unsigned char* out);
+    int generate(int eax, char* out);
 }

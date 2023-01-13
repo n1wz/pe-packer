@@ -15,8 +15,7 @@ int main(int argc, char* argv[]) {
 	arguments::init(argc, argv);
 
 	if (argc < 3) {
-		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-oc] [-key]", 2);
-		printf("-oc\tXor only sections with code\n");
+		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key]", 2);
 		printf("-key [size]\tKey size\n");
 		exit(1);
 	}
@@ -37,7 +36,7 @@ int main(int argc, char* argv[]) {
 
 	// Allocating buffer & reading file
 	int file_size = file.tellg();
-	char* buffer = new char[file_size + SECTION_SIZE + 0x1000];
+	char* buffer = new char[file_size + SECTION_SIZE + 0x10000];
 	file.seekg(0, std::ios::beg);
 	file.read(buffer, file_size);
 	file.close();
@@ -92,6 +91,9 @@ int main(int argc, char* argv[]) {
 	if (c_code_sec == 0)
 		utils::log(console, "No code sections found", 4);
 
+	char* winapi_calls = new char[0x10000], *shell_buffer = new char[0x1000];
+	int winapi_calls_s = 0;
+
 	// Parsing PE file import table
 	PIMAGE_IMPORT_DESCRIPTOR descriptor = (PIMAGE_IMPORT_DESCRIPTOR)(buffer + imports_offset);
 	for (; descriptor->FirstThunk; descriptor++) {
@@ -104,7 +106,12 @@ int main(int argc, char* argv[]) {
 		PIMAGE_THUNK_DATA thunk = (PIMAGE_THUNK_DATA)(buffer + utils::rva2offset(descriptor->FirstThunk, nt));
 		for (int t = 0; thunk->u1.AddressOfData; t++) {
 			PIMAGE_IMPORT_BY_NAME data = (PIMAGE_IMPORT_BY_NAME)(buffer + utils::rva2offset(thunk->u1.AddressOfData, nt));
-			FARPROC cur_func = GetProcAddress(cur_module, data->Name);
+			FARPROC func_addr = GetProcAddress(cur_module, data->Name);
+
+			// Generating shellcode
+			int size = shellcode::generate((int)func_addr, shell_buffer);
+			memcpy(winapi_calls + winapi_calls_s, shell_buffer, size);
+			winapi_calls_s += size;
 
 			// Generating call signature
 			*(int*)(shellcode::import_call + 2) = nt->OptionalHeader.ImageBase + descriptor->FirstThunk + (t * 4);
@@ -113,12 +120,13 @@ int main(int argc, char* argv[]) {
 			for (int i = 0; i < c_code_sec; i++) {
 				int pos = utils::find_bytes((char*)shellcode::import_call, (char*)(buffer + code_sec[i]->PointerToRawData), code_sec[i]->SizeOfRawData);
 
-
+				// function - call instr addr + 5
 			}
 
 			thunk++;
 		}
 	}
+	SECTION_SIZE += winapi_calls_s;
 
 	utils::log(console, "Xoring section(s) . . .", 1);
 
@@ -128,11 +136,12 @@ int main(int argc, char* argv[]) {
 
 	utils::log(console, "Creating section . . .", 1);
 
-	utils::create_section(".kucd", file_size, SECTION_SIZE, IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE, nt);
+	sec = (PIMAGE_SECTION_HEADER)utils::create_section(".kucd", file_size, SECTION_SIZE, IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE, nt);
 
 	// Allocating memory for new section
 	char* new_sec = new char[SECTION_SIZE];
 	ZeroMemory(new_sec, SECTION_SIZE);
+	int new_sec_s = 0;
 
 	// Copying xor key to end of section
 	memcpy(new_sec + SECTION_SIZE - KEY_SIZE, key, KEY_SIZE);
@@ -149,9 +158,13 @@ int main(int argc, char* argv[]) {
 		*(int*)(shellcode::crypt + 25) = int(code_sec[i]->Misc.VirtualSize);
 		memcpy(new_sec + sizeof(shellcode::crypt_init) + (i * sizeof(shellcode::crypt)), shellcode::crypt, sizeof(shellcode::crypt));
 	}
+	new_sec_s += sizeof(shellcode::crypt_init) + (c_code_sec * sizeof(shellcode::crypt));
 
 	*(int*)(shellcode::crypt_end + 2) = int(nt->OptionalHeader.AddressOfEntryPoint);
-	memcpy(new_sec + sizeof(shellcode::crypt_init) + (c_code_sec * sizeof(shellcode::crypt)), shellcode::crypt_end, sizeof(shellcode::crypt_end));
+	memcpy(new_sec + new_sec_s, shellcode::crypt_end, sizeof(shellcode::crypt_end));
+	new_sec_s += sizeof(shellcode::crypt_end);
+
+	memcpy(new_sec + new_sec_s, winapi_calls, winapi_calls_s);
 
 	// Changing entrypoint & copying new section
 	nt->OptionalHeader.AddressOfEntryPoint = sec->VirtualAddress;

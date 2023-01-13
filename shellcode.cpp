@@ -7,10 +7,11 @@ enum {
 	ADD, SUB, AND, OR, XOR
 };
 
-int shellcode::generate(int eax, unsigned char* out) {
+int shellcode::generate(int eax, char* out) {
 	std::vector<std::pair<std::string, int>> instr {
 		{ "\x05", ADD }, { "\x2D", SUB }, {"\x25", AND}, {"\x0D", OR}, {"\x35", XOR}
 	};
+
 	int total_instr = utils::rand(5, 15), out_s = 2;
 	unsigned int eax_v = 0;
 

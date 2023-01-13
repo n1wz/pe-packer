@@ -10,5 +10,5 @@ namespace utils {
 	int correct_num(int num, int to);
 	void* create_section(const char* name, int raw_addr, int size, int c, void* p);
 	int rva2offset(int rva, void* p);
-	int find_bytes(char* bytes, char* p, int s);
+	int find_bytes(char* bytes, char* p, int s, int off = 0);
 }

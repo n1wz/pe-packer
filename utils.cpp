@@ -70,8 +70,8 @@ int utils::rva2offset(int rva, void* p) {
 	return 0;
 }
 
-int utils::find_bytes(char* bytes, char* p, int s) {
+int utils::find_bytes(char* bytes, char* p, int s, int off) {
 	std::string buffer(p, s);
-	int pos = buffer.find(bytes);
+	int pos = buffer.find(bytes, off);
 	return pos;
 }

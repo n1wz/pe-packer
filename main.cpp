@@ -15,18 +15,20 @@ int main(int argc, char* argv[]) {
 	arguments::init(argc, argv);
 
 	if (argc < 3) {
-		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key]", 2);
-		printf("-key [size]\tKey size\n");
+		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key] [-obf]", 2);
+		printf("-key [size]   Key size\n");
+		printf("-obf          Enable WinAPI calls obuscation (test)\n");
 		exit(1);
 	}
 
-	utils::log(console, "pinkie-pie v0.2", 3);
+	utils::log(console, "pe-packer v0.2", 3);
 
 	const char* arg_key = arguments::get("-key");
 	if (arg_key != 0) {
 		KEY_SIZE = atoi(arg_key);
 		SECTION_SIZE += KEY_SIZE;
 	}
+	bool arg_obf = arguments::has("-obf");
 
 	std::ifstream file(argv[1], std::ios::binary | std::ios::ate);
 	if (!file) {
@@ -92,41 +94,54 @@ int main(int argc, char* argv[]) {
 		utils::log(console, "No code sections found", 4);
 
 	char* winapi_calls = new char[0x10000], *shell_buffer = new char[0x1000];
-	int winapi_calls_s = 0;
+	static int winapi_calls_s = 0;
 
 	// Parsing PE file import table
-	PIMAGE_IMPORT_DESCRIPTOR descriptor = (PIMAGE_IMPORT_DESCRIPTOR)(buffer + imports_offset);
-	for (; descriptor->FirstThunk; descriptor++) {
-		// Loading module
-		HMODULE cur_module = LoadLibraryA((char*)(buffer + utils::rva2offset(descriptor->Name, nt)));
-		if (!cur_module)
-			continue;
-		
-		// Parsing import functions
-		PIMAGE_THUNK_DATA thunk = (PIMAGE_THUNK_DATA)(buffer + utils::rva2offset(descriptor->FirstThunk, nt));
-		for (int t = 0; thunk->u1.AddressOfData; t++) {
-			PIMAGE_IMPORT_BY_NAME data = (PIMAGE_IMPORT_BY_NAME)(buffer + utils::rva2offset(thunk->u1.AddressOfData, nt));
-			FARPROC func_addr = GetProcAddress(cur_module, data->Name);
+	if (arg_obf) {
+		utils::log(console, "Obfuscating calls . . .", 1);
 
-			// Generating shellcode
-			int size = shellcode::generate((int)func_addr, shell_buffer);
-			memcpy(winapi_calls + winapi_calls_s, shell_buffer, size);
-			winapi_calls_s += size;
+		PIMAGE_IMPORT_DESCRIPTOR descriptor = (PIMAGE_IMPORT_DESCRIPTOR)(buffer + imports_offset);
+		for (; descriptor->FirstThunk; descriptor++) {
+			// Loading module
+			HMODULE cur_module = LoadLibraryA((char*)(buffer + utils::rva2offset(descriptor->Name, nt)));
+			if (!cur_module)
+				continue;
 
-			// Generating call signature
-			*(int*)(shellcode::import_call + 2) = nt->OptionalHeader.ImageBase + descriptor->FirstThunk + (t * 4);
+			// Parsing import functions
+			int va_next_sec = utils::correct_num((sec - 1)->VirtualAddress + (sec - 1)->Misc.VirtualSize, nt->OptionalHeader.SectionAlignment);
+			PIMAGE_THUNK_DATA thunk = (PIMAGE_THUNK_DATA)(buffer + utils::rva2offset(descriptor->FirstThunk, nt));
+			for (int t = 0; thunk->u1.AddressOfData; t++) {
+				PIMAGE_IMPORT_BY_NAME data = (PIMAGE_IMPORT_BY_NAME)(buffer + utils::rva2offset(thunk->u1.AddressOfData, nt));
+				FARPROC func_addr = GetProcAddress(cur_module, data->Name);
+				if (func_addr == NULL)
+					continue;
 
-			// Finding calls
-			for (int i = 0; i < c_code_sec; i++) {
-				int pos = utils::find_bytes((char*)shellcode::import_call, (char*)(buffer + code_sec[i]->PointerToRawData), code_sec[i]->SizeOfRawData);
+				// Generating shellcode
+				int size = shellcode::generate((int)func_addr, shell_buffer);
+				memcpy(winapi_calls + winapi_calls_s, shell_buffer, size);
+				winapi_calls_s += size;
 
-				// function - call instr addr + 5
+				// Generating call signature
+				*(int*)(shellcode::import_call + 2) = nt->OptionalHeader.ImageBase + descriptor->FirstThunk + (t * 4);
+
+				// Finding calls
+				for (int i = 0; i < c_code_sec; i++) {
+					int pos = utils::find_bytes((char*)shellcode::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData);
+					while (pos != -1) {
+						int rva = va_next_sec + winapi_calls_s - size - utils::offset2rva(pos, nt) - 5;
+						*(char*)(buffer + pos) = '\xE8';
+						*(int*)(buffer + pos + 1) = int(rva);
+						*(char*)(buffer + pos + 5) = '\x90';
+
+						pos = utils::find_bytes((char*)shellcode::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData + pos + 1);
+					}
+				}
+
+				thunk++;
 			}
-
-			thunk++;
 		}
+		SECTION_SIZE += winapi_calls_s;
 	}
-	SECTION_SIZE += winapi_calls_s;
 
 	utils::log(console, "Xoring section(s) . . .", 1);
 
@@ -141,13 +156,13 @@ int main(int argc, char* argv[]) {
 	// Allocating memory for new section
 	char* new_sec = new char[SECTION_SIZE];
 	ZeroMemory(new_sec, SECTION_SIZE);
-	int new_sec_s = 0;
+	int new_sec_s = winapi_calls_s;
 
 	// Copying xor key to end of section
 	memcpy(new_sec + SECTION_SIZE - KEY_SIZE, key, KEY_SIZE);
 
 	*(int*)(shellcode::crypt_init + 10) = KEY_SIZE;
-	memcpy(new_sec, shellcode::crypt_init, sizeof(shellcode::crypt_init));
+	memcpy(new_sec + new_sec_s, shellcode::crypt_init, sizeof(shellcode::crypt_init));
 
 	for (int i = 0; i < c_code_sec; i++) {
 		code_sec[i]->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE;
@@ -156,7 +171,7 @@ int main(int argc, char* argv[]) {
 		*(int*)(shellcode::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
 		*(int*)(shellcode::crypt + 18) = int(code_sec[i]->VirtualAddress);
 		*(int*)(shellcode::crypt + 25) = int(code_sec[i]->Misc.VirtualSize);
-		memcpy(new_sec + sizeof(shellcode::crypt_init) + (i * sizeof(shellcode::crypt)), shellcode::crypt, sizeof(shellcode::crypt));
+		memcpy(new_sec + new_sec_s + sizeof(shellcode::crypt_init) + (i * sizeof(shellcode::crypt)), shellcode::crypt, sizeof(shellcode::crypt));
 	}
 	new_sec_s += sizeof(shellcode::crypt_init) + (c_code_sec * sizeof(shellcode::crypt));
 
@@ -164,10 +179,10 @@ int main(int argc, char* argv[]) {
 	memcpy(new_sec + new_sec_s, shellcode::crypt_end, sizeof(shellcode::crypt_end));
 	new_sec_s += sizeof(shellcode::crypt_end);
 
-	memcpy(new_sec + new_sec_s, winapi_calls, winapi_calls_s);
+	memcpy(new_sec, winapi_calls, winapi_calls_s);
 
 	// Changing entrypoint & copying new section
-	nt->OptionalHeader.AddressOfEntryPoint = sec->VirtualAddress;
+	nt->OptionalHeader.AddressOfEntryPoint = sec->VirtualAddress + winapi_calls_s;
 	memmove(buffer + file_size, new_sec, SECTION_SIZE);
 
 	std::ofstream out(argv[2], std::ios::binary);

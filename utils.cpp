@@ -70,8 +70,22 @@ int utils::rva2offset(int rva, void* p) {
 	return 0;
 }
 
-int utils::find_bytes(char* bytes, char* p, int s, int off) {
-	std::string buffer(p, s);
-	int pos = buffer.find(bytes, off);
-	return pos;
+int utils::offset2rva(int offset, void* p) {
+	PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)p;
+	PIMAGE_SECTION_HEADER sec = IMAGE_FIRST_SECTION(nt);
+
+	if (offset < sec[0].PointerToRawData)
+		return offset;
+
+	for (int index = 0; index < nt->FileHeader.NumberOfSections; index++) {
+		if (offset >= sec[index].PointerToRawData && offset < (sec[index].PointerToRawData + sec[index].SizeOfRawData))
+			return (offset - sec[index].PointerToRawData + sec[index].VirtualAddress);
+	}
+
+	return 0;
+}
+
+int utils::find_bytes(char* bytes, int bs, char* p, int s, int off) {
+	std::string b(bytes, bs), m(p, s);
+	return m.find(b, off);
 }

@@ -65,7 +65,7 @@ int shellcode::generate(int eax, char* out) {
 	}
 
 	memcpy(out, "\x31\xC0", 2); // xor eax, eax
-	memcpy(out + out_s, "\xFF\xD0\xC3", 3); // call eax \n ret
+	memcpy(out + out_s, "\xFF\xE0\xC3", 3); // jmp eax \n ret
 	out_s += 3;
 
 	return out_s;

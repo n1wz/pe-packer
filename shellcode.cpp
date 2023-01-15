@@ -4,15 +4,15 @@
 #include "shellcode.h"
 
 enum {
-	ADD, SUB, AND, OR, XOR
+	ADD, SUB, AND, OR, XOR, NOT
 };
 
 int shellcode::generate(int eax, char* out) {
 	std::vector<std::pair<std::string, int>> instr {
-		{ "\x05", ADD }, { "\x2D", SUB }, {"\x25", AND}, {"\x0D", OR}, {"\x35", XOR}
+		{ "\x05", ADD }, { "\x2D", SUB }, {"\x25", AND}, {"\x0D", OR}, {"\x35", XOR}, {"\xF7\xD0", NOT}
 	};
 
-	int total_instr = utils::rand(5, 15), out_s = 2;
+	int total_instr = utils::rand(10, 15), out_s = 2;
 	unsigned int eax_v = 0;
 
 	for (int i = 0; i < total_instr; i++) {
@@ -44,11 +44,18 @@ int shellcode::generate(int eax, char* out) {
 				eax_v ^= num;
 				break;
 			}
+			case NOT: {
+				eax_v = ~eax_v;
+				break;
+			}
 		}
 
 		memcpy(out + out_s, instr[cur_instr].first.c_str(), instr[cur_instr].first.size());
-		memcpy(out + out_s + 1, &num, 4);
-		out_s += instr[cur_instr].first.size() + 4;
+		if (instr[cur_instr].second != NOT) {
+			memcpy(out + out_s + 1, &num, 4);
+			out_s += 4;
+		}
+		out_s += instr[cur_instr].first.size();
 	}
 
 	if (eax_v > eax) {

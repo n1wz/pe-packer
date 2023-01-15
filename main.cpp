@@ -15,26 +15,27 @@ int main(int argc, char* argv[]) {
 	arguments::init(argc, argv);
 
 	if (argc < 3) {
-		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key] [-obf]", 2);
+		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key] [-obf] [-remf]", 2);
 		printf("-key [size]   Key size\n");
 		printf("-obf          Enable WinAPI calls obuscation (test)\n");
 		exit(1);
 	}
 
-	utils::log(console, "pe-packer v0.2", 3);
-
-	const char* arg_key = arguments::get("-key");
-	if (arg_key != 0) {
-		KEY_SIZE = atoi(arg_key);
-		SECTION_SIZE += KEY_SIZE;
-	}
-	bool arg_obf = arguments::has("-obf");
+	utils::log(console, "pe-packer v0.4", 3);
 
 	std::ifstream file(argv[1], std::ios::binary | std::ios::ate);
 	if (!file) {
 		utils::log(console, "Failed to open file", 2);
 		exit(2);
 	}
+
+	// Checking arguments
+	const char* arg_key = arguments::get("-key");
+	if (arg_key != 0) {
+		KEY_SIZE = atoi(arg_key);
+		SECTION_SIZE += KEY_SIZE;
+	}
+	bool arg_obf = arguments::has("-obf");
 
 	// Allocating buffer & reading file
 	int file_size = file.tellg();
@@ -98,7 +99,7 @@ int main(int argc, char* argv[]) {
 
 	// Parsing PE file import table
 	if (arg_obf) {
-		utils::log(console, "Obfuscating calls . . .", 1);
+		utils::log(console, "Obfuscating WinAPI calls . . .", 1);
 
 		PIMAGE_IMPORT_DESCRIPTOR descriptor = (PIMAGE_IMPORT_DESCRIPTOR)(buffer + imports_offset);
 		for (; descriptor->FirstThunk; descriptor++) {
@@ -148,10 +149,12 @@ int main(int argc, char* argv[]) {
 	char* key = utils::generate_key(KEY_SIZE);
 	for (int i = 0; i < c_code_sec; i++)
 		utils::xor_crypt(buffer, code_sec[i]->PointerToRawData, code_sec[i]->SizeOfRawData, key, KEY_SIZE);
+	if (arg_obf)
+		utils::xor_crypt(winapi_calls, 0, winapi_calls_s, key, KEY_SIZE);
 
 	utils::log(console, "Creating section . . .", 1);
 
-	sec = (PIMAGE_SECTION_HEADER)utils::create_section(".kucd", file_size, SECTION_SIZE, IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE, nt);
+	sec = (PIMAGE_SECTION_HEADER)utils::create_section(".kucd", file_size, SECTION_SIZE, IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE, nt);
 
 	// Allocating memory for new section
 	char* new_sec = new char[SECTION_SIZE];
@@ -165,7 +168,7 @@ int main(int argc, char* argv[]) {
 	memcpy(new_sec + new_sec_s, shellcode::crypt_init, sizeof(shellcode::crypt_init));
 
 	for (int i = 0; i < c_code_sec; i++) {
-		code_sec[i]->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE;
+		code_sec[i]->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
 
 		// Generating shellcode for dexor section
 		*(int*)(shellcode::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
@@ -174,6 +177,14 @@ int main(int argc, char* argv[]) {
 		memcpy(new_sec + new_sec_s + sizeof(shellcode::crypt_init) + (i * sizeof(shellcode::crypt)), shellcode::crypt, sizeof(shellcode::crypt));
 	}
 	new_sec_s += sizeof(shellcode::crypt_init) + (c_code_sec * sizeof(shellcode::crypt));
+
+	if (arg_obf) {
+		*(int*)(shellcode::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
+		*(int*)(shellcode::crypt + 18) = int(sec->VirtualAddress);
+		*(int*)(shellcode::crypt + 25) = int(winapi_calls_s);
+		memcpy(new_sec + new_sec_s, shellcode::crypt, sizeof(shellcode::crypt));
+		new_sec_s += sizeof(shellcode::crypt);
+	}
 
 	*(int*)(shellcode::crypt_end + 2) = int(nt->OptionalHeader.AddressOfEntryPoint);
 	memcpy(new_sec + new_sec_s, shellcode::crypt_end, sizeof(shellcode::crypt_end));

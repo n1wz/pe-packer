@@ -2,10 +2,13 @@
 Simple pe file packer
 
 ## Using
-``pinkie-pie.exe [in] [out] [-key] [-obf]``  
+``pinkie-pie.exe [in] [out] [-key] [-obf] [-remf]``  
 Before using disable ASLR (/DYNAMICBASE:NO)
 
 ## Changelog
+- v0.4
+    - Added ``not`` instruction for obfuscation
+    - Added xoring for address calculation functions
 - v0.3
     - Added WinAPI calls obfuscation (``-obf``)
     - Added argument ``-key`` which specifies length of key

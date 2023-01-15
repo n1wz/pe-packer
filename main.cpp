@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
 	arguments::init(argc, argv);
 
 	if (argc < 3) {
-		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key] [-obf] [-remf]", 2);
+		utils::log(console, "Using: pinkie-pie.exe [in] [out] [-key] [-obf]", 2);
 		printf("-key [size]   Key size\n");
 		printf("-obf          Enable WinAPI calls obuscation (test)\n");
 		exit(1);

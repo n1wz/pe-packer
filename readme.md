@@ -2,7 +2,7 @@
 Simple pe file packer
 
 ## Using
-``pinkie-pie.exe [in] [out] [-key] [-obf] [-remf]``  
+``pinkie-pie.exe [in] [out] [-key] [-obf]``  
 Before using disable ASLR (/DYNAMICBASE:NO)
 
 ## Changelog

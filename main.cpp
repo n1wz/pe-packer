@@ -123,18 +123,18 @@ int main(int argc, char* argv[]) {
 				winapi_calls_s += size;
 
 				// Generating call signature
-				*(int*)(shellcode::import_call + 2) = nt->OptionalHeader.ImageBase + descriptor->FirstThunk + (t * 4);
+				*(int*)(shellcode::x86::import_call + 2) = nt->OptionalHeader.ImageBase + descriptor->FirstThunk + (t * 4);
 
 				// Finding calls
 				for (int i = 0; i < c_code_sec; i++) {
-					int pos = utils::find_bytes((char*)shellcode::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData);
+					int pos = utils::find_bytes((char*)shellcode::x86::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData);
 					while (pos != -1) {
 						int rva = va_next_sec + winapi_calls_s - size - utils::offset2rva(pos, nt) - 5;
 						*(char*)(buffer + pos) = '\xE8';
 						*(int*)(buffer + pos + 1) = int(rva);
 						*(char*)(buffer + pos + 5) = '\x90';
 
-						pos = utils::find_bytes((char*)shellcode::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData + pos + 1);
+						pos = utils::find_bytes((char*)shellcode::x86::import_call, 6, buffer, code_sec[i]->SizeOfRawData, code_sec[i]->PointerToRawData + pos + 1);
 					}
 				}
 
@@ -164,31 +164,31 @@ int main(int argc, char* argv[]) {
 	// Copying xor key to end of section
 	memcpy(new_sec + SECTION_SIZE - KEY_SIZE, key, KEY_SIZE);
 
-	*(int*)(shellcode::crypt_init + 10) = KEY_SIZE;
-	memcpy(new_sec + new_sec_s, shellcode::crypt_init, sizeof(shellcode::crypt_init));
+	*(int*)(shellcode::x86::crypt_init + 10) = KEY_SIZE;
+	memcpy(new_sec + new_sec_s, shellcode::x86::crypt_init, sizeof(shellcode::x86::crypt_init));
 
 	for (int i = 0; i < c_code_sec; i++) {
 		code_sec[i]->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
 
 		// Generating shellcode for dexor section
-		*(int*)(shellcode::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
-		*(int*)(shellcode::crypt + 18) = int(code_sec[i]->VirtualAddress);
-		*(int*)(shellcode::crypt + 25) = int(code_sec[i]->Misc.VirtualSize);
-		memcpy(new_sec + new_sec_s + sizeof(shellcode::crypt_init) + (i * sizeof(shellcode::crypt)), shellcode::crypt, sizeof(shellcode::crypt));
+		*(int*)(shellcode::x86::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
+		*(int*)(shellcode::x86::crypt + 18) = int(code_sec[i]->VirtualAddress);
+		*(int*)(shellcode::x86::crypt + 25) = int(code_sec[i]->Misc.VirtualSize);
+		memcpy(new_sec + new_sec_s + sizeof(shellcode::x86::crypt_init) + (i * sizeof(shellcode::x86::crypt)), shellcode::x86::crypt, sizeof(shellcode::x86::crypt));
 	}
-	new_sec_s += sizeof(shellcode::crypt_init) + (c_code_sec * sizeof(shellcode::crypt));
+	new_sec_s += sizeof(shellcode::x86::crypt_init) + (c_code_sec * sizeof(shellcode::x86::crypt));
 
 	if (arg_obf) {
-		*(int*)(shellcode::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
-		*(int*)(shellcode::crypt + 18) = int(sec->VirtualAddress);
-		*(int*)(shellcode::crypt + 25) = int(winapi_calls_s);
-		memcpy(new_sec + new_sec_s, shellcode::crypt, sizeof(shellcode::crypt));
-		new_sec_s += sizeof(shellcode::crypt);
+		*(int*)(shellcode::x86::crypt + 11) = int(sec->VirtualAddress + SECTION_SIZE - KEY_SIZE);
+		*(int*)(shellcode::x86::crypt + 18) = int(sec->VirtualAddress);
+		*(int*)(shellcode::x86::crypt + 25) = int(winapi_calls_s);
+		memcpy(new_sec + new_sec_s, shellcode::x86::crypt, sizeof(shellcode::x86::crypt));
+		new_sec_s += sizeof(shellcode::x86::crypt);
 	}
 
-	*(int*)(shellcode::crypt_end + 2) = int(nt->OptionalHeader.AddressOfEntryPoint);
-	memcpy(new_sec + new_sec_s, shellcode::crypt_end, sizeof(shellcode::crypt_end));
-	new_sec_s += sizeof(shellcode::crypt_end);
+	*(int*)(shellcode::x86::crypt_end + 2) = int(nt->OptionalHeader.AddressOfEntryPoint);
+	memcpy(new_sec + new_sec_s, shellcode::x86::crypt_end, sizeof(shellcode::x86::crypt_end));
+	new_sec_s += sizeof(shellcode::x86::crypt_end);
 
 	memcpy(new_sec, winapi_calls, winapi_calls_s);
 

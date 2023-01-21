@@ -7,12 +7,12 @@ enum {
 	ADD, SUB, AND, OR, XOR, NOT
 };
 
-int shellcode::generate(int eax, char* out) {
+int shellcode::generate(int eax, char* out, int c, bool j) {
 	std::vector<std::pair<std::string, int>> instr {
 		{ "\x05", ADD }, { "\x2D", SUB }, {"\x25", AND}, {"\x0D", OR}, {"\x35", XOR}, {"\xF7\xD0", NOT}
 	};
 
-	int total_instr = utils::rand(10, 15), out_s = 2;
+	int total_instr = c == 0 ? utils::rand(15, 20) : c, out_s = 2;
 	unsigned int eax_v = 0;
 
 	for (int i = 0; i < total_instr; i++) {
@@ -72,8 +72,10 @@ int shellcode::generate(int eax, char* out) {
 	}
 
 	memcpy(out, "\x31\xC0", 2); // xor eax, eax
-	memcpy(out + out_s, "\xFF\xE0\xC3", 3); // jmp eax \n ret
-	out_s += 3;
+	if (!j) {
+		memcpy(out + out_s, "\xFF\xE0\xC3", 3); // jmp eax \n ret
+		out_s += 3;
+	}
 
 	return out_s;
 }

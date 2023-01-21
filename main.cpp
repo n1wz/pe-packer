@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
 
 	// Allocating memory for new section
 	char* new_sec = new char[SECTION_SIZE];
-	ZeroMemory(new_sec, SECTION_SIZE);
+	memset(new_sec, 0xCC, SECTION_SIZE);
 	int new_sec_s = winapi_calls_s;
 
 	// Copying xor key to end of section
@@ -186,7 +186,11 @@ int main(int argc, char* argv[]) {
 		new_sec_s += sizeof(shellcode::x86::crypt);
 	}
 
-	*(int*)(shellcode::x86::crypt_end + 2) = int(nt->OptionalHeader.AddressOfEntryPoint);
+	char* entrypoint_calc = new char[0x1000];
+	int size = shellcode::generate(nt->OptionalHeader.AddressOfEntryPoint, entrypoint_calc, 20, true);
+	memcpy(new_sec + new_sec_s, entrypoint_calc, size);
+	new_sec_s += size;
+
 	memcpy(new_sec + new_sec_s, shellcode::x86::crypt_end, sizeof(shellcode::x86::crypt_end));
 	new_sec_s += sizeof(shellcode::x86::crypt_end);
 

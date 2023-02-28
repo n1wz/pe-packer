@@ -114,8 +114,10 @@ int main(int argc, char* argv[]) {
 			for (int t = 0; thunk->u1.AddressOfData; t++) {
 				PIMAGE_IMPORT_BY_NAME data = (PIMAGE_IMPORT_BY_NAME)(buffer + utils::rva2offset(thunk->u1.AddressOfData, nt));
 				FARPROC func_addr = GetProcAddress(cur_module, data->Name);
-				if (func_addr == NULL)
+				if (func_addr == NULL) {
+					thunk++;
 					continue;
+				}
 
 				// Generating shellcode
 				int size = shellcode::generate((int)func_addr, shell_buffer);
